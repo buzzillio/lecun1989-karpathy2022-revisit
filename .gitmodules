@@ -1,0 +1,3 @@
+[submodule "vendor/karpathy-2022"]
+	path = vendor/karpathy-2022
+	url = https://github.com/karpathy/lecun1989-repro
