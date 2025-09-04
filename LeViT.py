@@ -188,11 +188,14 @@ def train_mini_vit_plain(trial=None, **kwargs):
         print("# params:      ", model.param_count)
 
     # Data
-    if not os.path.exists('/Users/vasyl/Projects/lecun1989-karpathy2022-revisit/experiments/2025/train1989.pt') or not os.path.exists('/Users/vasyl/Projects/lecun1989-karpathy2022-revisit/experiments/2025/test1989.pt'):
+    data_dir = os.path.join(os.path.dirname(__file__), "experiments", "2025")
+    train_path = os.path.join(data_dir, "train1989.pt")
+    test_path = os.path.join(data_dir, "test1989.pt")
+    if not os.path.exists(train_path) or not os.path.exists(test_path):
         print("Error: train1989.pt and test1989.pt not found!")
         return None
-    Xtr, Ytr = torch.load('/Users/vasyl/Projects/lecun1989-karpathy2022-revisit/experiments/2025/test_minivit.py')
-    Xte, Yte = torch.load('/Users/vasyl/Projects/lecun1989-karpathy2022-revisit/experiments/2025/test1989.pt')
+    Xtr, Ytr = torch.load(train_path)
+    Xte, Yte = torch.load(test_path)
     if trial is None:
         print(f"Training data shape: {Xtr.shape}")
         print(f"Test data shape:     {Xte.shape}")
