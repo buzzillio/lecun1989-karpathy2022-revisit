@@ -1,0 +1,108 @@
+
+Experiment started at: 2025-09-02 14:39:09
+
+
+============================================================
+Testing on FrozenLake 4x4
+============================================================
+
+--- Q-Learning ---
+
+--- Vanilla MCTS (Fair: 150 sims) ---
+
+--- RaMCTS (Fair: 150 sims) ---
+
+--- Vanilla MCTS (Heavy: 450 sims) ---
+
+--- RaMCTS (Minimal: 80 sims) ---
+
+============================================================
+Testing on FrozenLake 8x8
+============================================================
+
+--- Q-Learning ---
+
+--- Vanilla MCTS (Fair: 300 sims) ---
+
+--- RaMCTS (Fair: 300 sims) ---
+
+--- Vanilla MCTS (Heavy: 900 sims) ---
+
+--- RaMCTS (Minimal: 150 sims) ---
+
+============================================================
+ABLATION STUDY (FrozenLake 8×8)
+============================================================
+
+Testing: Full RaMCTS
+  Failed to solve in 200 episodes
+
+Testing: No β-ramp
+  Failed to solve in 200 episodes
+
+Testing: No Trust Margin
+  Failed to solve in 200 episodes
+
+Testing: No Context Weight
+  Failed to solve in 200 episodes
+
+Testing: No IDF
+  Failed to solve in 200 episodes
+
+Testing: 1-grams Only
+  Failed to solve in 200 episodes
+
+============================================================
+FINAL RESULTS SUMMARY
+============================================================
+
+### FAIR COMPARISON (Equal Simulations) ###
+----------------------------------------
+
+FrozenLake 4x4 (150 sims/move for both):
+  Vanilla MCTS: Failed
+  RaMCTS:       Failed
+
+FrozenLake 8x8 (300 sims/move for both):
+  Vanilla MCTS: Failed
+  RaMCTS:       Failed
+
+### EFFICIENCY COMPARISON (Minimal Budget) ###
+----------------------------------------
+
+FrozenLake 4x4:
+  Q-Learning:           Failed
+  Vanilla MCTS (450 sims): Failed
+  RaMCTS (80 sims):     Failed
+
+FrozenLake 8x8:
+  Q-Learning:           Failed
+  Vanilla MCTS (900 sims): Failed
+  RaMCTS (150 sims):     Failed
+
+============================================================
+TOP DISCOVERED PATTERNS
+============================================================
+
+FrozenLake 4x4 - Top 5 Patterns (Fair Comparison):
+  1. Score 0.541: ((14, 2),)
+  2. Score 0.540: ((13, 2),)
+  3. Score 0.540: ((9, 1),)
+  4. Score 0.540: ((8, 2), (9, 1))
+  5. Score 0.540: ((13, 2), (14, 2))
+
+FrozenLake 8x8 - Top 5 Patterns (Fair Comparison):
+  1. Score 0.542: ((39, 1),)
+  2. Score 0.542: ((47, 1),)
+  3. Score 0.542: ((55, 1),)
+  4. Score 0.542: ((47, 1), (55, 1))
+  5. Score 0.542: ((39, 1), (47, 1))
+
+============================================================
+GENERATING VISUALIZATIONS
+============================================================
+
+============================================================
+GENERATING VISUALIZATIONS AND REPORT
+============================================================
+Comprehensive report saved to: ramcts_results/comprehensive_report.txt
