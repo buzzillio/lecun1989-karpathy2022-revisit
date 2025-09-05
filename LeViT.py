@@ -46,11 +46,7 @@ class MiniViT(nn.Module):
     """
     def __init__(self, *, image_size=16, patch_size=2, num_classes=10,
                  dim=20, depth=3, heads=2, mlp_dim=28, channels=1,
-<<<<<<< HEAD
-                 attn_dropout=0.10, mlp_dropout=0.1, use_mean_pool=True,
-=======
                  attn_dropout=0.10, mlp_dropout=0.10, use_mean_pool=True,
->>>>>>> main
                  augment_roll=True):
         super().__init__()
         assert image_size % patch_size == 0, "image_size must be divisible by patch_size"
