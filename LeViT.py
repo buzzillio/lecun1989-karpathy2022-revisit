@@ -46,7 +46,7 @@ class MiniViT(nn.Module):
     """
     def __init__(self, *, image_size=16, patch_size=2, num_classes=10,
                  dim=20, depth=3, heads=2, mlp_dim=28, channels=1,
-                 attn_dropout=0.05, mlp_dropout=0.1, use_mean_pool=False,
+                 attn_dropout=0.10, mlp_dropout=0.1, use_mean_pool=True,
                  augment_roll=True):
         super().__init__()
         assert image_size % patch_size == 0, "image_size must be divisible by patch_size"
@@ -154,15 +154,15 @@ def train_mini_vit_plain(trial=None, **kwargs):
         depth = kwargs.get('depth', 3)
         heads = kwargs.get('heads', 2)
         mlp_dim = kwargs.get('mlp_dim', 28)
-        attn_dropout = kwargs.get('attn_dropout', 0.05)
+        attn_dropout = kwargs.get('attn_dropout', 0.10)
         mlp_dropout = kwargs.get('mlp_dropout', 0.1)
-        base_lr = kwargs.get('base_lr', 5e-4)
-        weight_decay = kwargs.get('weight_decay', 0.01)
-        warmup_epochs = kwargs.get('warmup_epochs', 5)
-        label_smoothing = kwargs.get('label_smoothing', 0.1)
-        grad_clip = kwargs.get('grad_clip', 0.5)
+        base_lr = kwargs.get('base_lr', 1.5e-3)
+        weight_decay = kwargs.get('weight_decay', 0.03)
+        warmup_epochs = kwargs.get('warmup_epochs', 6)
+        label_smoothing = kwargs.get('label_smoothing', 0.05)
+        grad_clip = kwargs.get('grad_clip', 1.0)
         patch_size = kwargs.get('patch_size', 2)
-        use_mean_pool = kwargs.get('use_mean_pool', False)
+        use_mean_pool = kwargs.get('use_mean_pool', True)
     # Repro
     torch.manual_seed(1337); np.random.seed(1337)
     torch.use_deterministic_algorithms(True)
@@ -188,11 +188,14 @@ def train_mini_vit_plain(trial=None, **kwargs):
         print("# params:      ", model.param_count)
 
     # Data
-    if not os.path.exists('/Users/vasyl/Projects/lecun1989-karpathy2022-revisit/experiments/2025/train1989.pt') or not os.path.exists('/Users/vasyl/Projects/lecun1989-karpathy2022-revisit/experiments/2025/test1989.pt'):
+    data_dir = os.path.join(os.path.dirname(__file__), "experiments", "2025")
+    train_path = os.path.join(data_dir, "train1989.pt")
+    test_path = os.path.join(data_dir, "test1989.pt")
+    if not os.path.exists(train_path) or not os.path.exists(test_path):
         print("Error: train1989.pt and test1989.pt not found!")
         return None
-    Xtr, Ytr = torch.load('/Users/vasyl/Projects/lecun1989-karpathy2022-revisit/experiments/2025/test_minivit.py')
-    Xte, Yte = torch.load('/Users/vasyl/Projects/lecun1989-karpathy2022-revisit/experiments/2025/test1989.pt')
+    Xtr, Ytr = torch.load(train_path)
+    Xte, Yte = torch.load(test_path)
     if trial is None:
         print(f"Training data shape: {Xtr.shape}")
         print(f"Test data shape:     {Xte.shape}")
