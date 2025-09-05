@@ -46,11 +46,7 @@ class MiniViT(nn.Module):
     """
     def __init__(self, *, image_size=16, patch_size=2, num_classes=10,
                  dim=20, depth=3, heads=2, mlp_dim=28, channels=1,
- codex/debug-levit.py-for-unpicklingerror-q0ziwr
-                 attn_dropout=0.04, mlp_dropout=0.12, use_mean_pool=True,
-======= 
                  attn_dropout=0.10, mlp_dropout=0.1, use_mean_pool=True,
-main
                  augment_roll=True):
         super().__init__()
         assert image_size % patch_size == 0, "image_size must be divisible by patch_size"
@@ -158,15 +154,6 @@ def train_mini_vit_plain(trial=None, **kwargs):
         depth = kwargs.get('depth', 3)
         heads = kwargs.get('heads', 2)
         mlp_dim = kwargs.get('mlp_dim', 28)
- codex/debug-levit.py-for-unpicklingerror-q0ziwr
-        attn_dropout = kwargs.get('attn_dropout', 0.04)
-        mlp_dropout = kwargs.get('mlp_dropout', 0.12)
-        base_lr = kwargs.get('base_lr', 6e-4)
-        weight_decay = kwargs.get('weight_decay', 0.02)
-        warmup_epochs = kwargs.get('warmup_epochs', 8)
-        label_smoothing = kwargs.get('label_smoothing', 0.08)
-        grad_clip = kwargs.get('grad_clip', 0.8)
-
         attn_dropout = kwargs.get('attn_dropout', 0.10)
         mlp_dropout = kwargs.get('mlp_dropout', 0.1)
         base_lr = kwargs.get('base_lr', 1.5e-3)
@@ -174,7 +161,6 @@ def train_mini_vit_plain(trial=None, **kwargs):
         warmup_epochs = kwargs.get('warmup_epochs', 6)
         label_smoothing = kwargs.get('label_smoothing', 0.05)
         grad_clip = kwargs.get('grad_clip', 1.0)
- main
         patch_size = kwargs.get('patch_size', 2)
         use_mean_pool = kwargs.get('use_mean_pool', True)
     # Repro
