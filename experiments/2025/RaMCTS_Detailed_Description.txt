@@ -1,0 +1,248 @@
+RaMCTS: Pattern-Mined Priors for Monte Carlo Tree Search
+===============================================================
+Version: 2025-09-02 18:43 UTC
+
+This document gives a detailed, self-contained description of **RaMCTS**,
+a Monte Carlo Tree Search variant that learns lightweight, interpretable
+priors directly from experience via **state–action n-gram mining**.
+
+--------------------------------------------------------------------------
+1) Motivation & High-Level Idea
+--------------------------------------------------------------------------
+Vanilla MCTS (UCT/PUCT) explores with little prior guidance. In sparse-reward
+discrete problems, a small simulation budget may never reach good leaves,
+and exhaustive heuristics (beam/greedy) can be brittle.
+
+**RaMCTS** injects **cheap priors** into PUCT using patterns discovered *online*
+from the agent’s own rollouts. We mine short **n-grams of (state, action)**
+encountered in **near-success** episodes (top-quantile returns), score them with
+**normalized PMI (NPMI) × IDF**, and treat that score as a **learned prior**
+for actions that complete an observed pattern. A **β-ramp** turns the prior on
+only after enough evidence accumulates, and a **trust-margin** ensures the
+prior cannot make choices that are clearly worse than UCT. An optional
+**mini-duel** at the root runs a few extra sims to compare the UCT-best and
+prior-best before committing.
+
+The result is a planner that:
+• remains model-agnostic (works with tabular or learned world models),  
+• is cheap (no neural policy/value training required),  
+• learns transferable motifs (e.g., “get key → door → exit”), and  
+• is safer than naïve priors thanks to explicit gating.
+
+--------------------------------------------------------------------------
+2) Problem Setting & Notation
+--------------------------------------------------------------------------
+We consider a finite-action Markov decision process (S,A,T,R,γ) or a
+deterministic simulator (world model) with the usual MCTS interface
+(step(s,a) → (s′, r, done)). Planning is receding-horizon at each decision
+step. We denote a state–action token as τ = (s,a).
+
+A **trace** is an ordered list of tokens: T = [τ₀, τ₁, …, τ_{{L−1}}].
+RaMCTS maintains online statistics over **n-grams** g = (τ_{i},…,τ_{i+n−1}).
+
+--------------------------------------------------------------------------
+3) The RaCTSMiner (Pattern Mining Module)
+--------------------------------------------------------------------------
+3.1 Counts & Decay
+We keep two counters over n-grams:
+• c_all[g] – occurrences in all episodes (after decay),  
+• c_pos[g] – occurrences restricted to **near-success** episodes.
+
+To bound memory and track drifting tasks, we apply exponential **decay**
+to all totals and prune entries below a small threshold.
+
+3.2 Near-Success Threshold
+A rolling buffer of episode scores defines a **top-quantile** threshold
+(e.g., 85th percentile). An episode is “positive” if its return ≥ threshold.
+This yields signal earlier than waiting for perfect wins.
+
+3.3 Adaptive n-grams
+We include 1–3-grams by default, with **n_max** growing with map area and
+average trace length (e.g., 1 on tiny maps, up to 3 on larger/longer tasks).
+This captures short motifs without explosion.
+
+3.4 Scoring: NPMI × IDF (with smoothing)
+Let
+  p_high = (pos_total + λ) / (all_total + 2λ)
+  p_g    = (c_all[g] + λ) / (all_total + 2λ)
+  p_both = (c_pos[g] + λ) / (all_total + 2λ)
+where λ>0 is **add-λ smoothing**.
+Define PMI(g) = log( p_both / (p_g · p_high) ), and normalized PMI:
+  NPMI(g) = PMI(g) / ( − log p_both ).
+To down-weight generic patterns, compute
+  IDF(g) = min( log( (N+1) / (df(g)+1) ), idf_cap ),
+with N = all_total and df(g) = c_all[g]. We use **score(g) = max(0,NPMI(g))·IDF(g)**.
+
+3.5 Context Weights
+A light **context weighting** accentuates patterns near relevant regions,
+e.g., “closer to goal” in FrozenLake or “closer to passenger/destination”
+in Taxi. The final prior contribution of an action is multiplied by a
+state-dependent factor w_ctx(s) ∈ [1, 1.5] (typical).
+
+3.6 Prior for a Candidate Action
+At a node with state s and action a, form back-off grams that end in τ=(s,a):
+• 1-gram: ( (s,a) )  
+• 2-gram: ( (s_prev,a_prev), (s,a) ) if available  
+• 3-gram: ( (s_{−2},a_{−2}), (s_{−1},a_{−1}), (s,a) ) if available
+Sum their scores and multiply by context weight:
+  prior(s,a) = w_ctx(s) · Σ_g score(g).
+
+--------------------------------------------------------------------------
+4) Using Priors in Search (Softmax-PUCT with Safety)
+--------------------------------------------------------------------------
+4.1 Softmax over Priors
+At a node s with children a∈A(s), compute raw prior scores ϕ_a = prior(s,a).
+Convert to a probability simplex with temperature β≥0:
+  P(a|s) = softmax( β · ϕ_a ).
+
+4.2 β-Ramp (Evidence Gate)
+We keep a counter **pos_updates** (how many times we updated c_pos from a
+near-success). β increases smoothly from 0 to β_max as evidence grows:
+  β(pos) = β_max · clip( (pos − start) / (full − start), 0, 1 ).
+This keeps search near-vanilla early, avoiding brittle priors.
+
+4.3 Selection Rule (PUCT)
+For each child (s,a) with node statistics (N_s, N_{s,a}, Q_{s,a}):
+  UCT(a)  = Q_{s,a} + c_uct · sqrt( log(N_s+1) / (N_{s,a}+ε) )
+  PUCT(a) = Q_{s,a} + c_puct · P(a|s) · sqrt( max(1,N_s) ) / (1+N_{s,a})
+
+4.4 Trust-Margin Gate (Never-Worse Heuristic)
+Let a_U be the best action under UCT(·), and a_P under PUCT(·). We select:
+  • a_P if PUCT(a_P) ≥ UCT(a_U) + τ, AND warm_sims have elapsed.
+  • otherwise a_U.
+Here τ>0 is a small **trust margin** (e.g., 0.05), and warm_sims is the
+initial number of simulations we require before trusting priors.
+
+4.5 Mini-Duel at the Root (Optional)
+Before returning the final action at the root, run K extra rollouts through
+both a_U and a_P to refine Q estimates, then pick the higher-Q child. This
+adds a tiny, bounded compute overhead but stabilizes decisions.
+
+--------------------------------------------------------------------------
+5) Full Algorithm (Pseudocode)
+--------------------------------------------------------------------------
+Inputs: model (step function), budget B sims/move, miner (RaCTSMiner),
+        constants (c_uct, c_puct, β_max, start/full, trust_margin τ, warm_sims).
+For each real environment step do:
+  1. Root ← Node(current_state)
+  2. For t=1..B:
+       β ← β_ramp(miner.pos_updates)
+       PATH ← SELECT_EXPAND(Root, β, τ, warm_sims)
+       R ← ROLLOUT(PATH.last.state)
+       BACKUP(PATH, R)
+  3. Optional MINI_DUEL at Root between best-UCT and best-PUCT children.
+  4. Take argmax_a N_{Root,a}, apply in the real env, collect (state,action).
+After episode ends, call miner.update(trace, total_return).
+
+SELECT_EXPAND(node, β, τ, warm_sims):
+  while node is fully expanded and has children:
+    compute UCT and PUCT values for children
+    if β>0 and sims_done≥warm_sims and max_PUCT ≥ max_UCT + τ: pick PUCT-best
+    else: pick UCT-best
+    node ← child
+  if node has untried actions:
+    choose expansion action from {UCT-best, prior-best} (or ε-greedy tie)
+    add new child and return path
+
+--------------------------------------------------------------------------
+6) Practical Details & Defaults
+--------------------------------------------------------------------------
+• n-grams: 1..3 (adaptive); λ (smoothing) = 0.25; idf_cap ≈ 3.5.
+• Decay: 0.995–0.997 per episode; prune entries below 1e−3; cap table size.
+• Near-success quantile: 0.80–0.90 (0.85 default).
+• β-ramp: start after 3 positive updates; full effect by ~9.
+• Safety: trust_margin τ ≈ 0.03–0.07; warm_sims ≈ 40–80 sims.
+• Selection constants: c_uct ≈ 1.4; c_puct ≈ 1.0–1.5.
+
+Complexity:
+• Mining/update: O(#grams in episode) with decay/prune; memory bounded by cap.  
+• Search: same asymptotics as MCTS; tiny constant-factor overhead for prior
+  computation and optional mini-duel.
+
+--------------------------------------------------------------------------
+7) Diagnostics & Debugging
+--------------------------------------------------------------------------
+Recommended plots/logs per run:
+• Scatter: decayed document frequency vs NPMI — separates “generic” vs “useful”.  
+• β and ε (if any) over time; count of near-successes.  
+• Top-K grams with highest NPMI×IDF (human-readable motifs).  
+• Per-run sims/move curves: RaMCTS vs Vanilla.
+
+--------------------------------------------------------------------------
+8) Relationship to Prior Work
+--------------------------------------------------------------------------
+• RAVE/AMAF and progressive bias reuse action statistics; RaMCTS mines
+  *sequential* motifs and weights them with NPMI×IDF for non-genericity.
+• AlphaZero/MuZero inject neural policy/value priors; RaMCTS provides a
+  network-free alternative that can be combined with world models.
+• Retrieval-guided planning uses nearest neighbors; RaMCTS discovers motifs
+  without a retrieval store, via unsupervised pattern mining.
+
+--------------------------------------------------------------------------
+9) Typical Results (illustrative)
+--------------------------------------------------------------------------
+Under matched, small simulation budgets in our experiments:
+• FrozenLake 4×4 (deterministic): RaMCTS reached a 10-success streak in ~11
+  episodes; vanilla MCTS struggled; tabular Q-learning needed ≈2.1k episodes.  
+• FrozenLake 8×8: RaMCTS solved in ~20 episodes, while vanilla failed under
+  the same budget; Q-learning failed within 20k episodes.  
+• CliffWalking (dense negative rewards): RaMCTS matched or exceeded vanilla,
+  with safer exploration when using context weighting.
+
+(Exact numbers depend on seeds, budgets, and hyperparameters.)
+
+--------------------------------------------------------------------------
+10) Extensions
+--------------------------------------------------------------------------
+• Chance-node/expectimax MCTS for stochastic dynamics.  
+• Macro-actions: promote high-score grams to options; branch over {macro,
+  primitives}.  
+• Transfer: warm-start the miner across tasks (e.g., 4×4 → 8×8).  
+• Latent-space RaMCTS: mine grams over (z,a) from a learned world model
+  (e.g., JEPA-style encoder + dynamics).  
+• Auto-tuning (Optuna/bandit) for β_max, τ, decay, and budgets.
+
+--------------------------------------------------------------------------
+11) Limitations
+--------------------------------------------------------------------------
+• Best suited to **discrete, compositional** problems with reusable local
+  structure.  
+• Very large alphabets or highly stochastic transitions may dilute short-gram
+  signal — use macros, features, or chance nodes.  
+• Memory grows with distinct grams — mitigate with decay, pruning, features,
+  and caps.
+
+--------------------------------------------------------------------------
+12) Minimal API Sketch
+--------------------------------------------------------------------------
+class RaCTSMiner:
+    update(trace: List[Tuple[state,action]], total_reward: float) -> None
+    calculate_prior(node: Node, action: int) -> float
+
+class MCTSSolver:
+    choose_move(start_state, mode='ramcts'|'vanilla', miner=RaCTSMiner,
+                c_uct=1.4, c_puct=1.25, beta_max=2.0,
+                beta_start_pos=3, beta_full_pos=9,
+                trust_margin=0.05, warm_sims=50,
+                mini_duel=True, duel_extra_sims=6) -> int
+
+--------------------------------------------------------------------------
+13) Quick Start Recipe
+--------------------------------------------------------------------------
+1) Instantiate environment (or world model).  
+2) Create MCTSSolver(model, sims/move).  
+3) Create RaCTSMiner(model).  
+4) For each episode: plan each move with mode='ramcts'; after the episode
+   call miner.update(trace, total_return).  
+5) Log diagnostics; adjust β/τ if priors turn on too soon/late.
+
+--------------------------------------------------------------------------
+14) Acknowledgments & Reproducibility Notes
+--------------------------------------------------------------------------
+This description corresponds to the public reference notebook (“RaMCTS
+FrozenLake/CliffWalking/Taxi”) and includes the exact mechanisms used in our
+experiments: NPMI×IDF scoring with add-λ smoothing, adaptive 1–3-grams,
+context weighting, β-ramp, trust-margin, optional mini-duel, decay+pruning.
+Run with fixed seeds to reproduce figures; report median/IQR across seeds.
+
+— End of document —
