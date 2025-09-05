@@ -18,8 +18,20 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from einops.layers.torch import Rearrange
-import optuna
-from optuna.trial import TrialState
+
+# Optuna is optional; provide a minimal fallback when unavailable
+HAS_OPTUNA = True
+try:
+    import optuna
+    from optuna.trial import TrialState
+except ImportError:  # pragma: no cover - handled at runtime
+    from enum import Enum, auto
+
+    class TrialState(Enum):
+        COMPLETE = auto()
+
+    optuna = None
+    HAS_OPTUNA = False
 
 
 import warnings
@@ -46,11 +58,7 @@ class MiniViT(nn.Module):
     """
     def __init__(self, *, image_size=16, patch_size=2, num_classes=10,
                  dim=20, depth=3, heads=2, mlp_dim=28, channels=1,
- codex/debug-levit.py-for-unpicklingerror-q0ziwr
-                 attn_dropout=0.04, mlp_dropout=0.12, use_mean_pool=True,
-======= 
                  attn_dropout=0.10, mlp_dropout=0.1, use_mean_pool=True,
-main
                  augment_roll=True):
         super().__init__()
         assert image_size % patch_size == 0, "image_size must be divisible by patch_size"
@@ -120,8 +128,8 @@ main
         return self.head(feats)
 
 def train_mini_vit_plain(trial=None, **kwargs):
-    # Use trial suggestions if provided, otherwise use defaults
-    if trial is not None:
+    # Use trial suggestions if provided and Optuna is available, otherwise use defaults
+    if HAS_OPTUNA and trial is not None:
         # Hyperparameters to optimize
         dim = trial.suggest_int('dim', 16, 32, step=4)
         depth = trial.suggest_int('depth', 2, 6)
@@ -158,15 +166,6 @@ def train_mini_vit_plain(trial=None, **kwargs):
         depth = kwargs.get('depth', 3)
         heads = kwargs.get('heads', 2)
         mlp_dim = kwargs.get('mlp_dim', 28)
- codex/debug-levit.py-for-unpicklingerror-q0ziwr
-        attn_dropout = kwargs.get('attn_dropout', 0.04)
-        mlp_dropout = kwargs.get('mlp_dropout', 0.12)
-        base_lr = kwargs.get('base_lr', 6e-4)
-        weight_decay = kwargs.get('weight_decay', 0.02)
-        warmup_epochs = kwargs.get('warmup_epochs', 8)
-        label_smoothing = kwargs.get('label_smoothing', 0.08)
-        grad_clip = kwargs.get('grad_clip', 0.8)
-
         attn_dropout = kwargs.get('attn_dropout', 0.10)
         mlp_dropout = kwargs.get('mlp_dropout', 0.1)
         base_lr = kwargs.get('base_lr', 1.5e-3)
@@ -174,7 +173,6 @@ def train_mini_vit_plain(trial=None, **kwargs):
         warmup_epochs = kwargs.get('warmup_epochs', 6)
         label_smoothing = kwargs.get('label_smoothing', 0.05)
         grad_clip = kwargs.get('grad_clip', 1.0)
- main
         patch_size = kwargs.get('patch_size', 2)
         use_mean_pool = kwargs.get('use_mean_pool', True)
     # Repro
@@ -194,7 +192,7 @@ def train_mini_vit_plain(trial=None, **kwargs):
     )
     
     # Check parameter count constraint for Optuna trials
-    if trial is not None and model.param_count > 15000:
+    if HAS_OPTUNA and trial is not None and model.param_count > 15000:
         raise ValueError(f"Model too large: {model.param_count} params > 15000 limit")
     
     if trial is None:
@@ -286,13 +284,13 @@ def train_mini_vit_plain(trial=None, **kwargs):
             epochs_without_improvement += 1
             
         # Early stopping for Optuna trials only
-        if trial is not None and epochs_without_improvement >= patience and ep >= 10:
+        if HAS_OPTUNA and trial is not None and epochs_without_improvement >= patience and ep >= 10:
             if trial is None:
                 print(f"Early stopping after {ep+1} epochs (no improvement for {patience} epochs)")
             break
             
         # Report intermediate values to Optuna for pruning
-        if trial is not None:
+        if HAS_OPTUNA and trial is not None:
             trial.report(test_err, ep)
             if trial.should_prune():
                 raise optuna.exceptions.TrialPruned()
@@ -403,9 +401,9 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    if args.optimize:
+    if args.optimize and HAS_OPTUNA:
         study, best_model = optimize_hyperparameters(
-            n_trials=args.n_trials, 
+            n_trials=args.n_trials,
             study_name=args.study_name
         )
         if study:
@@ -413,6 +411,8 @@ if __name__ == "__main__":
         else:
             print("Optimization failed!")
     else:
+        if args.optimize and not HAS_OPTUNA:
+            print("Optuna is not installed; running default training instead.")
         # Run single training with default parameters
         m = train_mini_vit_plain()
         if m:
